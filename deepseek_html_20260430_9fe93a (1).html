@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Tek Kişi · Yüz Maskesi · Hareket Analizi</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@300;500;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #00e5cc;
+      --teal-dim: #00bfa5;
+      --pink: #ff4081;
+      --yellow: #ffd600;
+      --green: #69ff47;
+      --red: #ff1744;
+      --bg: #050a0e;
+      --bg2: #0a1520;
+      --bg3: #0f1e2e;
+      --border: #1a3040;
+      --text: #cce8e0;
+      --text-dim: #5a8a80;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      padding: 10px;
+      padding-top: max(10px, var(--safe-top));
+      padding-bottom: max(10px, var(--safe-bot));
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: clamp(18px, 5vw, 32px);
+      color: var(--teal);
+    }
+    .badge {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      font-size: 9px;
+    }
+    .badge span { font-size: 13px; font-weight: bold; }
+    #fps-val { color: var(--yellow); }
+    #cnt-val { color: var(--teal); }
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 12px;
+    }
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+    .canvas-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .canvas-wrap.back-cam { aspect-ratio: 9/16; max-height: 65vh; }
+    @media (max-width: 800px) {
+      .canvas-wrap { aspect-ratio: 4/3; }
+      .canvas-wrap.back-cam { aspect-ratio: 3/4; }
+    }
+    #webcam, #output_canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #webcam.mirror { transform: scaleX(-1); }
+    .cam-flip-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 20;
+      width: 44px;
+      height: 44px;
+      background: rgba(10,21,32,0.82);
+      border: 1px solid var(--teal-dim);
+      color: var(--teal);
+      font-size: 20px;
+      border-radius: 50%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+    }
+    .cam-flip-btn.visible { display: flex; }
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(5,10,14,0.7);
+    }
+    .placeholder.hidden { display: none; }
+    .btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      padding: 12px;
+      font-family: monospace;
+      font-weight: bold;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .btn-start {
+      background: var(--teal);
+      color: var(--bg);
+      border: none;
+    }
+    .btn-start.active { background: var(--pink); color: white; }
+    .mask-controls {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 10px;
+      margin-top: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .mask-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .mask-input {
+      flex: 2;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 8px;
+      color: var(--text);
+      font-family: monospace;
+    }
+    .mask-btn {
+      background: transparent;
+      border: 1px solid var(--teal-dim);
+      color: var(--teal);
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .mask-btn.remove {
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .metrics-panel {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 12px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .person-card {
+      border-left: 4px solid var(--teal);
+      padding: 8px;
+    }
+    .ac, .si {
+      background: var(--bg3);
+      margin: 4px 0;
+      padding: 6px;
+    }
+    .bar {
+      height: 3px;
+      background: var(--teal);
+      width: 0%;
+      transition: width 0.2s;
+    }
+    .sym-score {
+      font-size: 32px;
+      font-weight: bold;
+      color: var(--teal);
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>YÜZ MASKESİ + HAREKET ANALİZİ</h1>
+    <div>Tek kişi · Gerçek zamanlı · Karakter maskesi</div>
+  </div>
+  <div>
+    <div class="badge">FPS <span id="fps-val">0</span></div>
+    <div class="badge">KİŞİ <span id="cnt-val">0</span></div>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="cam-section">
+    <div class="canvas-wrap" id="canvasWrap">
+      <video id="webcam" autoplay playsinline muted></video>
+      <canvas id="output_canvas"></canvas>
+      <button class="cam-flip-btn" id="flipBtn">⟳</button>
+      <div class="placeholder" id="placeholder">
+        <div>📷</div>
+        <p>Kamerayı açmak için butona tıklayın</p>
+      </div>
+    </div>
+    <div style="display: flex; gap: 8px; margin-top: 8px;">
+      <button class="btn btn-start" id="camBtn">▶ KAMERAYI AÇ</button>
+      <button class="btn" id="screenshotBtn">📸 EKRAN GÖRÜNTÜSÜ</button>
+    </div>
+    <div class="mask-controls">
+      <div class="mask-row">
+        <input type="text" id="charName" class="mask-input" placeholder="karakter adı (ör: kedi, anime-kız, robot)" value="anime-kedi">
+        <button id="applyMaskBtn" class="mask-btn">🎭 MASKE OLUŞTUR</button>
+        <button id="removeMaskBtn" class="mask-btn remove">🗑 KALDIR</button>
+      </div>
+      <div id="maskStatus" style="font-size: 10px;">⚡ Maske kapalı</div>
+    </div>
+  </div>
+
+  <div class="metrics-panel" id="metricsPanel">
+    <div id="noPersonMsg">👤 Kişi algılanmadı</div>
+    <div id="personCard" style="display: none;">
+      <div class="person-card">
+        <h3>VÜCUT AÇILARI</h3>
+        <div class="ac">Sol Dirsek <span id="leVal">—</span>°<div class="bar" id="leBar"></div></div>
+        <div class="ac">Sağ Dirsek <span id="reVal">—</span>°<div class="bar" id="reBar"></div></div>
+        <div class="ac">Sol Omuz <span id="lsVal">—</span>°<div class="bar" id="lsBar"></div></div>
+        <div class="ac">Sağ Omuz <span id="rsVal">—</span>°<div class="bar" id="rsBar"></div></div>
+        <div class="ac">Sol Diz <span id="lkVal">—</span>°<div class="bar" id="lkBar"></div></div>
+        <div class="ac">Sağ Diz <span id="rkVal">—</span>°<div class="bar" id="rkBar"></div></div>
+        <div class="ac">Omuz Genişliği <span id="ssVal">—</span>°<div class="bar" id="ssBar"></div></div>
+        <div class="ac">Kalça Açısı <span id="haVal">—</span>°<div class="bar" id="haBar"></div></div>
+        <h3>YÜZ ANALİZİ</h3>
+        <div class="ac">Baş Eğimi <span id="rollVal">—</span>°<div class="bar" id="rollBar"></div></div>
+        <div class="ac">Baş Dönüşü <span id="yawVal">—</span>°<div class="bar" id="yawBar"></div></div>
+        <div class="ac">Ağız Açıklığı <span id="mouthVal">—</span>%<div class="bar" id="mouthBar"></div></div>
+        <div class="si">İfade: <span id="exprVal">—</span></div>
+        <div class="si">Sol El: <span id="leftHand">HAYIR</span></div>
+        <div class="si">Sağ El: <span id="rightHand">HAYIR</span></div>
+        <h3>SİMETRİ SKORU</h3>
+        <div class="sym-score" id="symScore">—</div>
+        <div class="bar" id="symBar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+    }
+  }
+</script>
+
+<script type="module">
+  import { PoseLandmarker, HandLandmarker, FaceLandmarker, FilesetResolver, DrawingUtils } from "@mediapipe/tasks-vision";
+
+  // DOM elements
+  const video = document.getElementById('webcam');
+  const canvas = document.getElementById('output_canvas');
+  const ctx = canvas.getContext('2d');
+  const camBtn = document.getElementById('camBtn');
+  const flipBtn = document.getElementById('flipBtn');
+  const screenshotBtn = document.getElementById('screenshotBtn');
+  const placeholder = document.getElementById('placeholder');
+  const canvasWrap = document.getElementById('canvasWrap');
+  const fpsSpan = document.getElementById('fps-val');
+  const cntSpan = document.getElementById('cnt-val');
+  const noPersonMsg = document.getElementById('noPersonMsg');
+  const personCard = document.getElementById('personCard');
+  const charNameInput = document.getElementById('charName');
+  const applyMaskBtn = document.getElementById('applyMaskBtn');
+  const removeMaskBtn = document.getElementById('removeMaskBtn');
+  const maskStatus = document.getElementById('maskStatus');
+
+  // Global değişkenler
+  let running = false;
+  let lastTimestamp = -1;
+  let fps = 0;
+  let frameCount = 0;
+  let lastFpsTime = performance.now();
+  let currentFacing = 'user';
+  let drawUtils = null;
+  let poseLandmarker, handLandmarker, faceLandmarker;
+  
+  // Maske değişkenleri
+  let maskImage = null;
+  let maskActive = false;
+
+  // Yardımcı fonksiyonlar
+  function angleBetweenPoints(a, b, c) {
+    const ba = { x: a.x - b.x, y: a.y - b.y };
+    const bc = { x: c.x - b.x, y: c.y - b.y };
+    const dot = ba.x * bc.x + ba.y * bc.y;
+    const mag = Math.hypot(ba.x, ba.y) * Math.hypot(bc.x, bc.y);
+    if (mag === 0) return null;
+    const rad = Math.acos(Math.min(1, Math.max(-1, dot / mag)));
+    return Math.round(rad * 180 / Math.PI);
+  }
+
+  function headRoll(landmarks) {
+    const left = landmarks[33];
+    const right = landmarks[263];
+    if (!left || !right) return null;
+    const dx = right.x - left.x;
+    const dy = right.y - left.y;
+    return Math.round(Math.atan2(dy, dx) * 180 / Math.PI);
+  }
+  function headYaw(landmarks) {
+    const nose = landmarks[1];
+    const leftEye = landmarks[234];
+    const rightEye = landmarks[454];
+    if (!nose || !leftEye || !rightEye) return null;
+    const ld = Math.abs(nose.x - leftEye.x);
+    const rd = Math.abs(nose.x - rightEye.x);
+    if (ld + rd === 0) return 0;
+    return Math.round(((ld - rd) / (ld + rd)) * 90);
+  }
+  function mouthOpenPercent(landmarks) {
+    const top = landmarks[13];
+    const bottom = landmarks[14];
+    const left = landmarks[61];
+    const right = landmarks[291];
+    if (!top || !bottom || !left || !right) return null;
+    const height = Math.hypot(top.x - bottom.x, top.y - bottom.y);
+    const width = Math.hypot(left.x - right.x, left.y - right.y);
+    if (width === 0) return 0;
+    return Math.round((height / width) * 100);
+  }
+  function getExpression(blendshapes) {
+    if (!blendshapes) return "NÖTR";
+    const map = {};
+    blendshapes.forEach(c => map[c.categoryName] = c.score);
+    const smile = (map.mouthSmileLeft || 0) + (map.mouthSmileRight || 0) / 2;
+    const blink = (map.eyeBlinkLeft || 0) + (map.eyeBlinkRight || 0) / 2;
+    const jaw = map.jawOpen || 0;
+    const brow = map.browInnerUp || 0;
+    if (blink > 0.6) return "GÖZ KAPALI";
+    if (jaw > 0.5) return "AĞIZ AÇIK";
+    if (smile > 0.4) return "GÜLÜMSÜYOR";
+    if (brow > 0.5) return "ŞAŞIRMIŞ";
+    return "NÖTR";
+  }
+
+  // Maske oluşturma (DiceBear)
+  async function createMask(character) {
+    if (!character.trim()) throw new Error('Karakter adı boş');
+    const seed = encodeURIComponent(character.trim().toLowerCase().replace(/\s+/g, '-'));
+    const url = `https://api.dicebear.com/9.x/adventurer/png?seed=${seed}&backgroundColor=transparent&size=300`;
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    return new Promise((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(`Mask yüklenemedi: ${character}`);
+      img.src = url;
+    });
+  }
+
+  async function applyMask() {
+    if (!running) {
+      maskStatus.innerText = '⚠ Önce kamerayı açın';
+      return;
+    }
+    const name = charNameInput.value.trim();
+    if (!name) {
+      maskStatus.innerText = '⚠ Bir karakter adı girin';
+      return;
+    }
+    maskStatus.innerText = `⏳ "${name}" maskesi oluşturuluyor...`;
+    try {
+      const img = await createMask(name);
+      maskImage = img;
+      maskActive = true;
+      maskStatus.innerText = `✅ "${name}" maskesi aktif!`;
+    } catch (e) {
+      maskStatus.innerText = `❌ Hata: ${e}`;
+      maskActive = false;
+    }
+  }
+  function removeMask() {
+    maskActive = false;
+    maskImage = null;
+    maskStatus.innerText = '⚡ Maske kaldırıldı';
+  }
+
+  // Maskeyi yüze çiz (döndürme ve ölçekleme)
+  function drawMask(faceLandmarks, img, rollAngle) {
+    if (!img || !faceLandmarks) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const pt of faceLandmarks) {
+      minX = Math.min(minX, pt.x);
+      maxX = Math.max(maxX, pt.x);
+      minY = Math.min(minY, pt.y);
+      maxY = Math.max(maxY, pt.y);
+    }
+    const faceW = (maxX - minX) * canvas.width;
+    const faceH = (maxY - minY) * canvas.height;
+    if (faceW <= 0 || faceH <= 0) return;
+    const centerX = ((minX + maxX) / 2) * canvas.width;
+    const centerY = ((minY + maxY) / 2) * canvas.height;
+    const size = Math.max(faceW, faceH) * 1.2;
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    if (rollAngle !== null && !isNaN(rollAngle)) ctx.rotate(rollAngle * Math.PI / 180);
+    ctx.drawImage(img, -size/2, -size/2, size, size);
+    ctx.restore();
+  }
+
+  // Modelleri başlat
+  async function initModels() {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task", delegate: "GPU" },
+      runningMode: "VIDEO", numPoses: 1,
+      minPoseDetectionConfidence: 0.5
+    });
+    handLandmarker = await HandLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate: "GPU" },
+      runningMode: "VIDEO", numHands: 2
+    });
+    faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+      baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task", delegate: "GPU" },
+      outputFaceBlendshapes: true, runningMode: "VIDEO", numFaces: 1
+    });
+    drawUtils = new DrawingUtils(ctx);
+  }
+
+  // Kamera kontrolü
+  async function startCamera(facing = 'user') {
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => t.stop());
+    }
+    const constraints = { video: { facingMode: { exact: facing }, width: 1280, height: 720 } };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      video.onloadedmetadata = () => video.play();
+      currentFacing = facing;
+      video.classList.toggle('mirror', facing === 'user');
+      canvasWrap.classList.toggle('back-cam', facing === 'environment');
+      return true;
+    } catch (e) {
+      // fallback
+      const fallback = await navigator.mediaDevices.getUserMedia({ video: true });
+      video.srcObject = fallback;
+      video.play();
+      currentFacing = 'user';
+      video.classList.add('mirror');
+      return false;
+    }
+  }
+
+  // Ana döngü
+  async function predict() {
+    if (!running) return;
+    const now = performance.now();
+    frameCount++;
+    if (now - lastFpsTime >= 1000) {
+      fps = frameCount;
+      fpsSpan.innerText = fps;
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      if (canvas.width !== video.videoWidth) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+      }
+      const timestamp = performance.now();
+      const poseResult = poseLandmarker.detectForVideo(video, timestamp);
+      const handResult = handLandmarker.detectForVideo(video, timestamp);
+      const faceResult = faceLandmarker.detectForVideo(video, timestamp);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (currentFacing === 'user') {
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      const hasPerson = poseResult.landmarks && poseResult.landmarks.length > 0;
+      cntSpan.innerText = hasPerson ? '1' : '0';
+      if (hasPerson) {
+        noPersonMsg.style.display = 'none';
+        personCard.style.display = 'block';
+        const lm = poseResult.landmarks[0];
+        // Vücut çizimi
+        drawUtils.drawConnectors(lm, PoseLandmarker.POSE_CONNECTIONS, { color: '#00e5cc', lineWidth: 2 });
+        drawUtils.drawLandmarks(lm, { radius: 3, color: 'white' });
+        
+        // Açılar
+        const le = angleBetweenPoints(lm[11], lm[13], lm[15]);
+        const re = angleBetweenPoints(lm[12], lm[14], lm[16]);
+        const ls = angleBetweenPoints(lm[13], lm[11], lm[23]);
+        const rs = angleBetweenPoints(lm[14], lm[12], lm[24]);
+        const lk = angleBetweenPoints(lm[23], lm[25], lm[27]);
+        const rk = angleBetweenPoints(lm[24], lm[26], lm[28]);
+        const ss = angleBetweenPoints(lm[23], lm[11], lm[12]);
+        const ha = angleBetweenPoints(lm[11], lm[23], lm[25]);
+        
+        const setVal = (id, val) => { document.getElementById(id+'Val').innerText = val !== null ? val+'°' : '—'; document.getElementById(id+'Bar').style.width = val !== null ? Math.min(100, val/180*100)+'%' : '0%'; };
+        setVal('le', le); setVal('re', re); setVal('ls', ls); setVal('rs', rs);
+        setVal('lk', lk); setVal('rk', rk); setVal('ss', ss); setVal('ha', ha);
+        
+        // Simetri
+        const pairs = [[le,re],[ls,rs],[lk,rk]].filter(([a,b])=>a!==null && b!==null);
+        let sym = null;
+        if (pairs.length) {
+          const avgDiff = pairs.reduce((s,[a,b])=>s+Math.abs(a-b),0) / pairs.length;
+          sym = Math.round(Math.max(0, 100 - (avgDiff/90)*100));
+          document.getElementById('symScore').innerText = sym+'%';
+          document.getElementById('symBar').style.width = sym+'%';
+        } else {
+          document.getElementById('symScore').innerText = '—';
+          document.getElementById('symBar').style.width = '0%';
+        }
+        
+        // Yüz
+        const faceLm = faceResult.faceLandmarks && faceResult.faceLandmarks[0];
+        if (faceLm) {
+          const roll = headRoll(faceLm);
+          const yaw = headYaw(faceLm);
+          const mouth = mouthOpenPercent(faceLm);
+          document.getElementById('rollVal').innerText = roll !== null ? roll+'°' : '—';
+          document.getElementById('rollBar').style.width = roll !== null ? Math.min(100, Math.abs(roll)/90*100)+'%' : '0%';
+          document.getElementById('yawVal').innerText = yaw !== null ? yaw+'°' : '—';
+          document.getElementById('yawBar').style.width = yaw !== null ? Math.min(100, Math.abs(yaw)/90*100)+'%' : '0%';
+          document.getElementById('mouthVal').innerText = mouth !== null ? mouth+'%' : '—';
+          document.getElementById('mouthBar').style.width = mouth !== null ? mouth+'%' : '0%';
+          const blendshapes = faceResult.faceBlendshapes && faceResult.faceBlendshapes[0] ? faceResult.faceBlendshapes[0].categories : null;
+          const expr = getExpression(blendshapes);
+          document.getElementById('exprVal').innerText = expr;
+          
+          // Maske çiz (sadece ilk kişiye)
+          if (maskActive && maskImage) {
+            drawMask(faceLm, maskImage, roll);
+          }
+        } else {
+          document.getElementById('rollVal').innerText = '—'; document.getElementById('rollBar').style.width = '0%';
+          document.getElementById('yawVal').innerText = '—'; document.getElementById('yawBar').style.width = '0%';
+          document.getElementById('mouthVal').innerText = '—'; document.getElementById('mouthBar').style.width = '0%';
+          document.getElementById('exprVal').innerText = '—';
+        }
+        
+        // Eller
+        let leftHand = false, rightHand = false;
+        if (handResult.landmarks) {
+          for (let i=0; i<handResult.landmarks.length; i++) {
+            const handedness = handResult.handedness[i][0].categoryName;
+            if (handedness === 'Left') leftHand = true;
+            else rightHand = true;
+            drawUtils.drawConnectors(handResult.landmarks[i], HandLandmarker.HAND_CONNECTIONS, { color: '#00e5cc' });
+            drawUtils.drawLandmarks(handResult.landmarks[i], { radius: 2 });
+          }
+        }
+        document.getElementById('leftHand').innerHTML = leftHand ? 'EVET' : 'HAYIR';
+        document.getElementById('rightHand').innerHTML = rightHand ? 'EVET' : 'HAYIR';
+      } else {
+        noPersonMsg.style.display = 'block';
+        personCard.style.display = 'none';
+      }
+      
+      if (currentFacing === 'user') ctx.restore();
+    }
+    requestAnimationFrame(predict);
+  }
+
+  // Buton olayları
+  camBtn.addEventListener('click', async () => {
+    if (running) {
+      running = false;
+      video.srcObject?.getTracks().forEach(t => t.stop());
+      video.srcObject = null;
+      camBtn.innerText = '▶ KAMERAYI AÇ';
+      camBtn.classList.remove('active');
+      placeholder.classList.remove('hidden');
+      flipBtn.classList.remove('visible');
+    } else {
+      await initModels();
+      await startCamera('user');
+      running = true;
+      camBtn.innerText = '⏹ KAMERAYI KAPAT';
+      camBtn.classList.add('active');
+      placeholder.classList.add('hidden');
+      flipBtn.classList.add('visible');
+      predict();
+    }
+  });
+  
+  flipBtn.addEventListener('click', async () => {
+    if (!running) return;
+    const newFacing = currentFacing === 'user' ? 'environment' : 'user';
+    await startCamera(newFacing);
+  });
+  
+  screenshotBtn.addEventListener('click', () => {
+    if (!running) return;
+    const link = document.createElement('a');
+    link.download = `mask-track-${Date.now()}.png`;
+    link.href = canvas.toDataURL();
+    link.click();
+  });
+  
+  applyMaskBtn.addEventListener('click', applyMask);
+  removeMaskBtn.addEventListener('click', removeMask);
+  
+  // Otomatik model yükleme (ilk açılışta)
+  initModels().catch(console.error);
+</script>
+</body>
+</html>
